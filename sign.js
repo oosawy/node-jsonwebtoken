@@ -30,7 +30,8 @@ const sign_options_schema = {
   keyid: { isValid: isString, message: '"keyid" must be a string' },
   mutatePayload: { isValid: isBoolean, message: '"mutatePayload" must be a boolean' },
   allowInsecureKeySizes: { isValid: isBoolean, message: '"allowInsecureKeySizes" must be a boolean'},
-  allowInvalidAsymmetricKeyTypes: { isValid: isBoolean, message: '"allowInvalidAsymmetricKeyTypes" must be a boolean'}
+  allowInvalidAsymmetricKeyTypes: { isValid: isBoolean, message: '"allowInvalidAsymmetricKeyTypes" must be a boolean' },
+  skipSigning: { isValid: isBoolean, message: '"skipSigning" must be a boolean' }
 };
 
 const registered_claims_schema = {
@@ -107,7 +108,7 @@ module.exports = function (payload, secretOrPrivateKey, options, callback) {
     throw err;
   }
 
-  if (!secretOrPrivateKey && options.algorithm !== 'none') {
+  if (!secretOrPrivateKey && options.algorithm !== 'none' && !options.skipSigning) {
     return failure(new Error('secretOrPrivateKey must have a value'));
   }
 
@@ -123,17 +124,19 @@ module.exports = function (payload, secretOrPrivateKey, options, callback) {
     }
   }
 
-  if (header.alg.startsWith('HS') && secretOrPrivateKey.type !== 'secret') {
-    return failure(new Error((`secretOrPrivateKey must be a symmetric key when using ${header.alg}`)))
-  } else if (/^(?:RS|PS|ES)/.test(header.alg)) {
-    if (secretOrPrivateKey.type !== 'private') {
-      return failure(new Error((`secretOrPrivateKey must be an asymmetric key when using ${header.alg}`)))
-    }
-    if (!options.allowInsecureKeySizes &&
-      !header.alg.startsWith('ES') &&
-      secretOrPrivateKey.asymmetricKeyDetails !== undefined && //KeyObject.asymmetricKeyDetails is supported in Node 15+
-      secretOrPrivateKey.asymmetricKeyDetails.modulusLength < 2048) {
-      return failure(new Error(`secretOrPrivateKey has a minimum key size of 2048 bits for ${header.alg}`));
+  if (!options.skipSigning) {
+    if (header.alg.startsWith('HS') && secretOrPrivateKey.type !== 'secret') {
+      return failure(new Error((`secretOrPrivateKey must be a symmetric key when using ${header.alg}`)))
+    } else if (/^(?:RS|PS|ES)/.test(header.alg)) {
+      if (secretOrPrivateKey.type !== 'private') {
+        return failure(new Error((`secretOrPrivateKey must be an asymmetric key when using ${header.alg}`)))
+      }
+      if (!options.allowInsecureKeySizes &&
+        !header.alg.startsWith('ES') &&
+        secretOrPrivateKey.asymmetricKeyDetails !== undefined && //KeyObject.asymmetricKeyDetails is supported in Node 15+
+        secretOrPrivateKey.asymmetricKeyDetails.modulusLength < 2048) {
+        return failure(new Error(`secretOrPrivateKey has a minimum key size of 2048 bits for ${header.alg}`));
+      }
     }
   }
 
@@ -233,19 +236,20 @@ module.exports = function (payload, secretOrPrivateKey, options, callback) {
       header: header,
       privateKey: secretOrPrivateKey,
       payload: payload,
-      encoding: encoding
+      encoding: encoding,
+      skipSigning: options.skipSigning
     }).once('error', callback)
       .once('done', function (signature) {
         // TODO: Remove in favor of the modulus length check before signing once node 15+ is the minimum supported version
-        if(!options.allowInsecureKeySizes && /^(?:RS|PS)/.test(header.alg) && signature.length < 256) {
+        if(!options.skipSigning && !options.allowInsecureKeySizes && /^(?:RS|PS)/.test(header.alg) && signature.length < 256) {
           return callback(new Error(`secretOrPrivateKey has a minimum key size of 2048 bits for ${header.alg}`))
         }
         callback(null, signature);
       });
   } else {
-    let signature = jws.sign({header: header, payload: payload, secret: secretOrPrivateKey, encoding: encoding});
+    let signature = jws.sign({header: header, payload: payload, secret: secretOrPrivateKey, encoding: encoding, skipSigning: options.skipSigning});
     // TODO: Remove in favor of the modulus length check before signing once node 15+ is the minimum supported version
-    if(!options.allowInsecureKeySizes && /^(?:RS|PS)/.test(header.alg) && signature.length < 256) {
+    if(!options.skipSigning && !options.allowInsecureKeySizes && /^(?:RS|PS)/.test(header.alg) && signature.length < 256) {
       throw new Error(`secretOrPrivateKey has a minimum key size of 2048 bits for ${header.alg}`)
     }
     return signature

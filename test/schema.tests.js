@@ -56,6 +56,13 @@ describe('schema', function() {
       }).to.throw(/"noTimestamp" must be a boolean/);
       sign({noTimestamp: true}, 'superSecret');
     });
+
+    it('should validate skipSigning', function () {
+      expect(function () {
+        sign({ skipSigning: 10 }, null);
+      }).to.throw(/"skipSigning" must be a boolean/);
+      sign({skipSigning: true}, null);
+    });
   });
 
   describe('sign payload registered claims', function() {
