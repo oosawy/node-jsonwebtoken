@@ -1,5 +1,5 @@
 {
-  "name": "jsonwebtoken",
+  "name": "@oosawy/jsonwebtoken",
   "version": "9.0.2",
   "description": "JSON Web Token implementation (symmetric and asymmetric)",
   "main": "index.js",
